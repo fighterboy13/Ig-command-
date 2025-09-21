@@ -51,16 +51,19 @@ async function startBot() {
   async function botLoop() {
     try {
       const thread = ig.entity.directThread(THREAD_ID);
-      const info = await thread.info();
+      const items = await thread.items();
+
+      // Users aur title thread object se hi aate hain
+      const currentUsers = (thread.users || []).map(u => u.username);
+      const groupName = thread.thread_title || "Group";
 
       // --- Group name lock ---
-      if (lockEnabled && info.thread_title !== lockedName) {
-        console.log(`🔒 Name changed to "${info.thread_title}" resetting to "${lockedName}"...`);
+      if (lockEnabled && groupName !== lockedName) {
+        console.log(`🔒 Name changed to "${groupName}" resetting to "${lockedName}"...`);
         await thread.updateTitle(lockedName);
       }
 
       // --- Detect new members ---
-      const currentUsers = info.users.map(u => u.username);
       if (welcomeEnabled) {
         for (let u of currentUsers) {
           if (!lastUsers.includes(u)) {
@@ -72,14 +75,13 @@ async function startBot() {
       lastUsers = currentUsers;
 
       // --- Auto reply & Commands ---
-      const items = await thread.items();
       if (items && items.length > 0) {
         const lastItem = items[0]; // latest message
         if (lastItem.item_id !== lastItemId) {
           lastItemId = lastItem.item_id;
 
-          if (lastItem.user_id && lastItem.user_id !== info.viewer_id) {
-            const sender = info.users.find(u => u.pk === lastItem.user_id)?.username || "user";
+          if (lastItem.user_id) {
+            const sender = (thread.users || []).find(u => u.pk === lastItem.user_id)?.username || "user";
             const text = lastItem.text || "";
 
             console.log(`💬 Message from ${sender}: ${text}`);
@@ -116,7 +118,7 @@ async function startBot() {
               }
 
               if (cmd === "!lock") {
-                lockedName = arg || info.thread_title;
+                lockedName = arg || groupName;
                 lockEnabled = true;
                 await thread.broadcastText(`🔒 Group name locked to: "${lockedName}"`);
               }
@@ -151,7 +153,7 @@ async function startBot() {
       // Auto-reconnect after error
       console.log("♻️ Restarting bot in 10s...");
       setTimeout(startBot, 10000);
-      return; // stop current loop
+      return;
     }
 
     setTimeout(botLoop, 5000); // 5 sec loop
@@ -170,4 +172,4 @@ async function startBot() {
     setTimeout(startBot, 15000);
   }
 })();
-    
+                
