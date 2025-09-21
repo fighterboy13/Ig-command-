@@ -17,7 +17,7 @@ let replyEnabled = true;
 let lockEnabled = false;
 let lockedName = "";
 
-// Express server (Render/Heroku ke liye)
+// Express server (Heroku/Render ke liye)
 const app = express();
 const PORT = process.env.PORT || 3000;
 app.get("/", (req, res) => res.send("Instagram Group Command Bot is alive!"));
@@ -37,32 +37,32 @@ async function login() {
     const serialized = await ig.state.serialize();
     fs.writeFileSync("session.json", JSON.stringify(serialized));
   }
+
+  console.log("✅ Logged in as", USERNAME);
 }
 
 // Start Bot
 async function startBot() {
   await login();
-  console.log(`✅ Logged in as ${USERNAME}`);
+  console.log(`🚀 Bot started`);
 
   let lastUsers = [];
   let lastItemId = null;
 
   async function botLoop() {
     try {
-      const thread = ig.entity.directThread(THREAD_ID);
+      // 🔹 Thread feed
+      const threadFeed = ig.feed.directThread(THREAD_ID);
+      const items = await threadFeed.items(); // messages array
 
-      // 🔹 Messages feed
-      const itemsFeed = thread.items();       
-      const items = await itemsFeed.items();  
-
-      // 🔹 Thread info (users + title)
-      const currentUsers = (thread.users || []).map(u => u.username);
-      const groupName = thread.thread_title || "Group";
+      // 🔹 Users from thread (sometimes empty, fallback)
+      const currentUsers = (threadFeed.users || []).map(u => u.username);
+      const groupName = threadFeed.threadTitle || "Group";
 
       // --- Group name lock ---
       if (lockEnabled && groupName !== lockedName) {
         console.log(`⚠️ Name changed to "${groupName}" resetting to "${lockedName}"...`);
-        await thread.updateTitle(lockedName);
+        await threadFeed.updateTitle(lockedName).catch(() => {});
       }
 
       // --- Detect new members ---
@@ -70,9 +70,9 @@ async function startBot() {
         for (let u of currentUsers) {
           if (!lastUsers.includes(u)) {
             console.log(`👋 New user joined: ${u}`);
-            await thread.broadcastText(
+            await threadFeed.broadcastText(
               WELCOME_MSG.replace("{user}", u).replace("@{user}", `@${u}`)
-            );
+            ).catch(() => {});
           }
         }
       }
@@ -86,7 +86,7 @@ async function startBot() {
 
           if (lastItem.user_id && lastItem.user_id !== ig.state.cookieUserId) {
             const sender =
-              (thread.users || []).find(u => u.pk === lastItem.user_id)?.username || "user";
+              (threadFeed.users || []).find(u => u.pk === lastItem.user_id)?.username || "user";
             const text = lastItem.text || "";
 
             if (text.startsWith("!")) {
@@ -97,60 +97,72 @@ async function startBot() {
               if (cmd === "!welcome") {
                 if (arg.toLowerCase() === "on") {
                   welcomeEnabled = true;
-                  await thread.broadcastText(`✅ Welcome messages enabled.`);
+                  await threadFeed.broadcastText(`✅ Welcome messages enabled.`).catch(() => {});
                 } else if (arg.toLowerCase() === "off") {
                   welcomeEnabled = false;
-                  await thread.broadcastText(`❌ Welcome messages disabled.`);
+                  await threadFeed.broadcastText(`❌ Welcome messages disabled.`).catch(() => {});
                 } else if (arg.length > 0) {
                   WELCOME_MSG = arg;
-                  await thread.broadcastText(`✏️ Welcome message updated to: ${arg}`);
+                  await threadFeed.broadcastText(`✏️ Welcome message updated to: ${arg}`).catch(() => {});
                 }
               }
 
               if (cmd === "!reply") {
                 if (arg.toLowerCase() === "on") {
                   replyEnabled = true;
-                  await thread.broadcastText(`✅ Auto-reply enabled.`);
+                  await threadFeed.broadcastText(`✅ Auto-reply enabled.`).catch(() => {});
                 } else if (arg.toLowerCase() === "off") {
                   replyEnabled = false;
-                  await thread.broadcastText(`❌ Auto-reply disabled.`);
+                  await threadFeed.broadcastText(`❌ Auto-reply disabled.`).catch(() => {});
                 } else if (arg.length > 0) {
                   AUTO_REPLY = arg;
-                  await thread.broadcastText(`✏️ Auto-reply updated to: ${arg}`);
+                  await threadFeed.broadcastText(`✏️ Auto-reply updated to: ${arg}`).catch(() => {});
                 }
               }
 
               if (cmd === "!lock") {
                 lockedName = arg || groupName;
                 lockEnabled = true;
-                await thread.broadcastText(`🔒 Group name locked to: "${lockedName}"`);
+                await threadFeed.broadcastText(`🔒 Group name locked to: "${lockedName}"`).catch(() => {});
               }
 
               if (cmd === "!unlock") {
                 lockEnabled = false;
-                await thread.broadcastText(`🔓 Group name lock disabled.`);
+                await threadFeed.broadcastText(`🔓 Group name lock disabled.`).catch(() => {});
+              }
+
+              if (cmd === "!help") {
+                await threadFeed.broadcastText(
+                  "📌 Commands:\n" +
+                  "!welcome on/off/custom\n" +
+                  "!reply on/off/custom\n" +
+                  "!lock [name]\n" +
+                  "!unlock\n" +
+                  "!help"
+                ).catch(() => {});
               }
             } else {
               // Normal auto-reply
               if (replyEnabled) {
                 console.log(`💬 Message from ${sender}: ${text}`);
-                await thread.broadcastText(
+                await threadFeed.broadcastText(
                   AUTO_REPLY.replace("{user}", sender).replace("@{user}", `@${sender}`)
-                );
+                ).catch(() => {});
               }
             }
           }
         }
       }
+
     } catch (err) {
       console.error("❌ Error in botLoop:", err.message);
     }
 
-    setTimeout(botLoop, 5000); // 5 sec loop
+    setTimeout(botLoop, 5000);
   }
 
   botLoop();
 }
 
 startBot();
-              
+        
