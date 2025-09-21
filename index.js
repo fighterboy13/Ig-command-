@@ -17,26 +17,28 @@ let replyEnabled = true;
 let lockEnabled = false;
 let lockedName = "";
 
-// Express server (Render/Heroku ke liye)
+// Express server (Heroku/Render ke liye)
 const app = express();
 const PORT = process.env.PORT || 3000;
 app.get("/", (req, res) => res.send("Instagram Group Command Bot is alive!"));
-app.listen(PORT, () => console.log(`Web server running on port ${PORT}`));
+app.listen(PORT, () => console.log(`✅ Web server running on port ${PORT}`));
 
 // Session handling
 async function login() {
   ig.state.generateDevice(USERNAME);
 
   if (fs.existsSync("session.json")) {
-    console.log("Loading saved session...");
+    console.log("🔑 Loading saved session...");
     const saved = JSON.parse(fs.readFileSync("session.json"));
     await ig.state.deserialize(saved);
   } else {
-    console.log("Logging in fresh...");
+    console.log("🔐 Logging in fresh...");
     await ig.account.login(USERNAME, PASSWORD);
     const serialized = await ig.state.serialize();
     fs.writeFileSync("session.json", JSON.stringify(serialized));
   }
+
+  console.log("✅ Logged in as", USERNAME);
 }
 
 // Start Bot
@@ -48,12 +50,12 @@ async function startBot() {
 
   async function botLoop() {
     try {
-      const info = await ig.direct.getThread({ thread_id: THREAD_ID });
       const thread = ig.entity.directThread(THREAD_ID);
+      const info = await thread.info();
 
       // --- Group name lock ---
       if (lockEnabled && info.thread_title !== lockedName) {
-        console.log(`Name changed to "${info.thread_title}" resetting to "${lockedName}"...`);
+        console.log(`🔒 Name changed to "${info.thread_title}" resetting to "${lockedName}"...`);
         await thread.updateTitle(lockedName);
       }
 
@@ -62,7 +64,7 @@ async function startBot() {
       if (welcomeEnabled) {
         for (let u of currentUsers) {
           if (!lastUsers.includes(u)) {
-            console.log(`New user joined: ${u}`);
+            console.log(`👤 New user joined: ${u}`);
             await thread.broadcastText(WELCOME_MSG.replace("{user}", u).replace("@{user}", `@${u}`));
           }
         }
@@ -70,8 +72,9 @@ async function startBot() {
       lastUsers = currentUsers;
 
       // --- Auto reply & Commands ---
-      if (info.items && info.items.length > 0) {
-        const lastItem = info.items[0]; // latest message
+      const items = await thread.items();
+      if (items && items.length > 0) {
+        const lastItem = items[0]; // latest message
         if (lastItem.item_id !== lastItemId) {
           lastItemId = lastItem.item_id;
 
@@ -79,7 +82,8 @@ async function startBot() {
             const sender = info.users.find(u => u.pk === lastItem.user_id)?.username || "user";
             const text = lastItem.text || "";
 
-            // Commands
+            console.log(`💬 Message from ${sender}: ${text}`);
+
             if (text.startsWith("!")) {
               const parts = text.trim().split(" ");
               const cmd = parts[0].toLowerCase();
@@ -88,43 +92,52 @@ async function startBot() {
               if (cmd === "!welcome") {
                 if (arg.toLowerCase() === "on") {
                   welcomeEnabled = true;
-                  await thread.broadcastText(`Welcome messages enabled.`);
+                  await thread.broadcastText(`✅ Welcome messages enabled.`);
                 } else if (arg.toLowerCase() === "off") {
                   welcomeEnabled = false;
-                  await thread.broadcastText(`Welcome messages disabled.`);
+                  await thread.broadcastText(`❌ Welcome messages disabled.`);
                 } else if (arg.length > 0) {
                   WELCOME_MSG = arg;
-                  await thread.broadcastText(`Welcome message updated to: ${arg}`);
+                  await thread.broadcastText(`✏️ Welcome message updated to: ${arg}`);
                 }
               }
 
               if (cmd === "!reply") {
                 if (arg.toLowerCase() === "on") {
                   replyEnabled = true;
-                  await thread.broadcastText(`Auto-reply enabled.`);
+                  await thread.broadcastText(`✅ Auto-reply enabled.`);
                 } else if (arg.toLowerCase() === "off") {
                   replyEnabled = false;
-                  await thread.broadcastText(`Auto-reply disabled.`);
+                  await thread.broadcastText(`❌ Auto-reply disabled.`);
                 } else if (arg.length > 0) {
                   AUTO_REPLY = arg;
-                  await thread.broadcastText(`Auto-reply updated to: ${arg}`);
+                  await thread.broadcastText(`✏️ Auto-reply updated to: ${arg}`);
                 }
               }
 
               if (cmd === "!lock") {
                 lockedName = arg || info.thread_title;
                 lockEnabled = true;
-                await thread.broadcastText(`Group name locked to: "${lockedName}"`);
+                await thread.broadcastText(`🔒 Group name locked to: "${lockedName}"`);
               }
 
               if (cmd === "!unlock") {
                 lockEnabled = false;
-                await thread.broadcastText(`Group name lock disabled.`);
+                await thread.broadcastText(`🔓 Group name lock disabled.`);
+              }
+
+              if (cmd === "!help") {
+                await thread.broadcastText(
+                  "📌 Commands:\n" +
+                  "!welcome on/off/custom\n" +
+                  "!reply on/off/custom\n" +
+                  "!lock [name]\n" +
+                  "!unlock\n" +
+                  "!help"
+                );
               }
             } else {
-              // Normal auto-reply
               if (replyEnabled) {
-                console.log(`Message from ${sender}: ${text}`);
                 await thread.broadcastText(AUTO_REPLY.replace("{user}", sender).replace("@{user}", `@${sender}`));
               }
             }
@@ -133,7 +146,12 @@ async function startBot() {
       }
 
     } catch (err) {
-      console.error("Error:", err.message);
+      console.error("❌ Error in botLoop:", err.message);
+
+      // Auto-reconnect after error
+      console.log("♻️ Restarting bot in 10s...");
+      setTimeout(startBot, 10000);
+      return; // stop current loop
     }
 
     setTimeout(botLoop, 5000); // 5 sec loop
@@ -142,6 +160,14 @@ async function startBot() {
   botLoop();
 }
 
-startBot();
-
-
+// Entry point
+(async () => {
+  try {
+    await startBot();
+  } catch (err) {
+    console.error("❌ Fatal Error:", err.message);
+    console.log("♻️ Retrying login in 15s...");
+    setTimeout(startBot, 15000);
+  }
+})();
+    
