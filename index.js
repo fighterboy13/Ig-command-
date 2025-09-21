@@ -3,11 +3,11 @@ const fs = require('fs');
 const express = require('express');
 
 const ig = new IgApiClient();
-const USERNAME = process.env.IG_USER || "username";
-const PASSWORD = process.env.IG_PASS || "password";
+const USERNAME = process.env.IG_USER || "nfyter";
+const PASSWORD = process.env.IG_PASS || "x-223344";
 
 // Group Info
-const THREAD_ID = "YOUR_THREAD_ID"; // group thread id
+const THREAD_ID = "794932516795889"; // group thread id
 
 // Default settings
 let WELCOME_MSG = "Welcome to the group, @{user}! 🎉";
@@ -143,4 +143,5 @@ async function startBot() {
 }
 
 startBot();
+
 
