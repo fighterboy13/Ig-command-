@@ -54,18 +54,17 @@ async function startBot() {
         const userInfo = await ig.user.info(userId);
         const username = userInfo.username;
 
-        // Send welcome
+        // Send welcome instantly
         await thread.broadcastText(`🎉 Welcome @${username}! 👋 Enjoy the group 🔥`);
         console.log(`✅ Sent welcome to: ${username}`);
       }
     } catch (err) {
       console.error("❌ Error in bot loop:", err);
     }
-  }, 10000); // check every 10 sec
+  }, 1000); // check every 1 sec ⚡ fast mode
 }
 
 (async () => {
   await login();
   startBot();
 })();
-      
