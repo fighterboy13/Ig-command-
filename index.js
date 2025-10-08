@@ -12,7 +12,7 @@ try {
 }
 
 // ✅ Sirf ek hi group me kaam kare
-const GROUP_THREAD_ID = "24196335160017473";
+const GROUP_THREAD_ID = "29871068355871187";
 
 // ✅ Express Server to keep bot alive
 const app = express();
@@ -53,3 +53,4 @@ login({ appState }, (err, api) => {
     }
   });
 });
+
