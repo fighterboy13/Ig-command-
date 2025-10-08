@@ -1,56 +1,65 @@
-const login = require("ws3-fca");
-const fs = require("fs");
-const express = require("express");
+const { IgApiClient } = require('instagram-private-api');
+const fs = require('fs');
+const express = require('express');
 
-// ✅ Load AppState
-let appState;
-try {
-  appState = JSON.parse(fs.readFileSync("appstate.json", "utf-8"));
-} catch (err) {
-  console.error("❌ Error reading appstate.json:", err);
-  process.exit(1);
-}
+const ig = new IgApiClient();
 
-// ✅ Sirf ek hi group me kaam kare
+// ✅ Your Instagram credentials (ya environment variables se lo)
+const IG_USERNAME = process.env.IG_USER || "nfyter";
+const IG_PASSWORD = process.env.IG_PASS || "X-223344";
+
+// ✅ Group thread ID (jisme welcome message chahiye)
 const GROUP_THREAD_ID = "29871068355871187";
 
-// ✅ Express Server to keep bot alive
+// ✅ Express server (Render/Heroku ke liye alive rakhne ko)
 const app = express();
 const PORT = process.env.PORT || 3000;
-app.get("/", (req, res) => res.send("🤖 Welcome Bot is alive!"));
+app.get("/", (req, res) => res.send("🤖 Instagram Welcome Bot is alive!"));
 app.listen(PORT, () => console.log(`🌐 Web server running on port ${PORT}`));
 
-// 🟢 Facebook Login
-login({ appState }, (err, api) => {
-  if (err) {
-    console.error("❌ Login Failed:", err);
-    return;
+// ✅ Function: Login and save session
+async function login() {
+  ig.state.generateDevice(IG_USERNAME);
+
+  if (fs.existsSync("session.json")) {
+    await ig.state.deserialize(JSON.parse(fs.readFileSync("session.json", "utf-8")));
+    console.log("✅ Session restored.");
+  } else {
+    await ig.account.login(IG_USERNAME, IG_PASSWORD);
+    fs.writeFileSync("session.json", JSON.stringify(await ig.state.serialize()));
+    console.log("✅ Logged in & session saved.");
   }
+}
 
-  console.log("✅ Logged in successfully. Welcome Bot activated.");
+// ✅ Function: Welcome New Members
+async function startBot() {
+  setInterval(async () => {
+    try {
+      // Get thread info
+      const thread = ig.entity.directThread(GROUP_THREAD_ID);
+      const info = await thread.broadcastText(""); // empty msg to refresh state
 
-  // 🆕 Listen for events
-  api.listenMqtt((err, event) => {
-    if (err) return console.error(err);
+      // Get last activity
+      const items = await thread.items();
+      const lastItem = items[0];
 
-    // ✅ Sirf hamare group me hi chale
-    if (event.threadID === GROUP_THREAD_ID) {
-      // ✅ New member join detect
-      if (event.type === "event" && event.logMessageType === "log:subscribe") {
-        const addedMembers = event.logMessageData.addedParticipants.map(u => u.fullName);
-        const mentions = event.logMessageData.addedParticipants.map(u => ({
-          tag: u.fullName,
-          id: u.userFbId
-        }));
+      if (lastItem.item_type === "action_log" && lastItem.action_log.description.includes("added")) {
+        const userId = lastItem.user_id;
+        const userInfo = await ig.user.info(userId);
+        const username = userInfo.username;
 
-        let msg = `🎉 Welcome ${addedMembers.join(", ")}! 👋\nEnjoy the group 🔥`;
-
-        api.sendMessage({ body: msg, mentions }, event.threadID, (err) => {
-          if (err) console.error("❌ Failed to send welcome:", err);
-          else console.log(`✅ Sent welcome to: ${addedMembers.join(", ")}`);
-        });
+        // Welcome message
+        await thread.broadcastText(`🎉 Welcome @${username}! 👋 Enjoy the group 🔥`);
+        console.log(`✅ Sent welcome to: ${username}`);
       }
+    } catch (err) {
+      console.error("❌ Error in bot loop:", err);
     }
-  });
-});
+  }, 10000); // check every 10 sec
+}
 
+// ✅ Run Bot
+(async () => {
+  await login();
+  startBot();
+})();
